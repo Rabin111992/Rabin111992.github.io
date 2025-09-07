@@ -367,27 +367,82 @@ async function updateINRRates() {
   elements.inrRatesContainer.innerHTML = ratesHTML;
 }
 
+// Fetch gold price from Gold API
+async function fetchGoldPrice() {
+  const myHeaders = new Headers();
+  myHeaders.append("x-access-token", "goldapi-5z18ld4gkwkcydf4-io");
+  myHeaders.append("Content-Type", "application/json");
+
+  const requestOptions = {
+    method: 'GET',
+    headers: myHeaders,
+    redirect: 'follow'
+  };
+
+  try {
+    const response = await fetch("https://www.goldapi.io/api/XAU/INR", requestOptions);
+    const data = await response.json();
+    
+    if (data && data.price_gram_24k) {
+      // Use the API's direct per-gram pricing for 24k gold
+      const priceFor10Grams = Math.round(data.price_gram_24k * 10);
+      
+      // Use API's built-in change percentage
+      const changePercentage = data.chp || 0;
+      
+      return {
+        price: priceFor10Grams,
+        change: changePercentage / 100, // Convert percentage to decimal
+        changeAmount: data.ch || 0,
+        changePercent: data.chp || 0,
+        openPrice: Math.round(data.open_price * (10 / 31.1035)) || null,
+        highPrice: Math.round(data.high_price * (10 / 31.1035)) || null,
+        lowPrice: Math.round(data.low_price * (10 / 31.1035)) || null,
+        prevClosePrice: Math.round(data.prev_close_price * (10 / 31.1035)) || null,
+        timestamp: data.timestamp || Date.now(),
+        metal: data.metal || 'XAU',
+        currency: data.currency || 'INR',
+        exchange: data.exchange || 'Unknown',
+        success: true
+      };
+    }
+    
+    throw new Error('Invalid API response structure - missing price_gram_24k');
+  } catch (error) {
+    console.error('Error fetching gold price:', error);
+    return {
+      price: 101669, // Updated fallback price based on API format
+      change: 0.01, // 1% fallback change
+      changePercent: 1.0,
+      success: false,
+      error: error.message
+    };
+  }
+}
+
 // Update precious metals
 async function updateLivePreciousMetals() {
   try {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    const goldPrice = 105018;
+    // Fetch real-time gold price
+    const goldData = await fetchGoldPrice();
+    
+    // Static silver price (no API provided for silver)
     const silverPrice = 1370;
-    const goldChange = (Math.random() - 0.3) * 0.03;
     const silverChange = (Math.random() - 0.3) * 0.04;
 
     elements.metalsContainer.innerHTML = `
                 <div class="metal-card gold">
                     <div class="metal-name">🥇 Gold (24K)</div>
-                    <div class="metal-price">₹${goldPrice.toLocaleString()}</div>
+                    <div class="metal-price">₹${goldData.price.toLocaleString()}</div>
                     <div class="metal-unit">per 10 grams</div>
                     <div class="live-indicator">
                         <div class="live-dot"></div>
-                        <span>LIVE ${goldChange >= 0 ? "+" : ""}${(
-      goldChange * 100
-    ).toFixed(2)}%</span>
+                        <span>${goldData.success ? 'LIVE' : 'EST'} ${goldData.changePercent >= 0 ? "+" : ""}${goldData.changePercent.toFixed(2)}%</span>
                     </div>
+                    ${goldData.success && goldData.exchange ? 
+                        `<div style="font-size: 0.6rem; opacity: 0.8; margin-top: 2px;">📊 ${goldData.exchange} Exchange</div>` : 
+                        !goldData.success ? '<div style="font-size: 0.6rem; opacity: 0.7; margin-top: 2px;">⚠️ Using fallback data</div>' : ''
+                    }
                 </div>
                 <div class="metal-card silver">
                     <div class="metal-name">🥈 Silver</div>
@@ -395,14 +450,41 @@ async function updateLivePreciousMetals() {
                     <div class="metal-unit">per 10 grams</div>
                     <div class="live-indicator">
                         <div class="live-dot"></div>
-                        <span>LIVE ${silverChange >= 0 ? "+" : ""}${(
-      silverChange * 100
-    ).toFixed(2)}%</span>
+                        <span>EST ${silverChange >= 0 ? "+" : ""}${(silverChange * 100).toFixed(2)}%</span>
+                    </div>
+                    <div style="font-size: 0.6rem; opacity: 0.7; margin-top: 2px;">📊 Estimated data</div>
+                </div>
+            `;
+    
+    if (goldData.success) {
+      console.log(`✅ Gold price updated: ₹${goldData.price.toLocaleString()}/10g (${goldData.changePercent >= 0 ? '+' : ''}${goldData.changePercent.toFixed(2)}%) - ${goldData.exchange} Exchange`);
+    } else {
+      console.log(`⚠️ Gold price fallback: ₹${goldData.price.toLocaleString()}/10g (${goldData.error})`);
+    }
+  } catch (error) {
+    console.error("Error updating metals:", error);
+    
+    // Fallback display on complete failure
+    elements.metalsContainer.innerHTML = `
+                <div class="metal-card gold">
+                    <div class="metal-name">🥇 Gold (24K)</div>
+                    <div class="metal-price">₹1,01,669</div>
+                    <div class="metal-unit">per 10 grams</div>
+                    <div class="live-indicator">
+                        <div class="live-dot"></div>
+                        <span>⚠️ Data unavailable</span>
+                    </div>
+                </div>
+                <div class="metal-card silver">
+                    <div class="metal-name">🥈 Silver</div>
+                    <div class="metal-price">₹1,370</div>
+                    <div class="metal-unit">per 10 grams</div>
+                    <div class="live-indicator">
+                        <div class="live-dot"></div>
+                        <span>⚠️ Data unavailable</span>
                     </div>
                 </div>
             `;
-  } catch (error) {
-    console.error("Error updating metals:", error);
   }
 }
 
